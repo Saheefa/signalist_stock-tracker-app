@@ -32,7 +32,7 @@ const StockHeatmap = () => {
   const [tiles, setTiles] = useState<StockTile[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const apiKey = process.env.NEXT_PUBLIC_NEXT_PUBLIC_FINNHUB_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY || process.env.NEXT_PUBLIC_NEXT_PUBLIC_FINNHUB_API_KEY;
 
   useEffect(() => {
     const fetchStocks = async () => {
