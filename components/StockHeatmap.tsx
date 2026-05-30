@@ -61,7 +61,7 @@ const StockHeatmap = () => {
         setLoading(false);
       }
     };
-    if (apiKey) fetchStocks();
+    if (apiKey) fetchStocks(); else { console.error('No Finnhub API key found'); setLoading(false); }
     else setLoading(false);
   }, [apiKey]);
 
