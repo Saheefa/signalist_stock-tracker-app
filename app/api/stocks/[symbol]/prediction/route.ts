@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeStock, PricePoint } from "@/lib/ml/stockPrediction";
 
 const FINNHUB_BASE = process.env.FINNHUB_BASE_URL ?? "https://finnhub.io/api/v1";
-const FINNHUB_KEY  = process.env.NEXT_PUBLIC_NEXT_PUBLIC_FINNHUB_API_KEY ?? "";
+const FINNHUB_KEY  = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? process.env.FINNHUB_API_KEY ?? "";
 
 interface FinnhubCandles {
   c: number[]; h: number[]; l: number[]; o: number[]; v: number[]; t: number[]; s: string;
