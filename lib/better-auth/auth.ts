@@ -31,4 +31,14 @@ export const getAuth = async () => {
     return authInstance;
 }
 
-export const auth = await getAuth();
+// Lazy proxy — resolves on first actual use (runtime only, not build time)
+export const auth = new Proxy({} as Awaited<ReturnType<typeof getAuth>>, {
+    get(_target, prop) {
+        return async (...args: any[]) => {
+            const instance = await getAuth();
+            const value = (instance as any)[prop];
+            if (typeof value === "function") return value.apply(instance, args);
+            return value;
+        };
+    },
+});
