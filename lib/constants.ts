@@ -102,7 +102,7 @@ export const HEATMAP_WIDGET_CONFIG = {
     grouping: 'sector',
     isTransparent: true,
     locale: 'en',
-    symbolUrl: '',
+    symbolUrl: '/stocks/[symbol]',
     colorTheme: 'dark',
     exchanges: [],
     hasTopBar: false,
