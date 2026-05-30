@@ -32,8 +32,8 @@ function candlesToPricePoints(candles: FinnhubCandles): PricePoint[] {
   }));
 }
 
-export async function GET(req: NextRequest, { params }: { params: { symbol: string } }) {
-  const { symbol } = params;
+export async function GET(req: NextRequest, { params }: { params: Promise<{ symbol: string }> }) {
+  const { symbol } = await params;
   if (!symbol || typeof symbol !== "string")
     return NextResponse.json({ error: "Invalid symbol" }, { status: 400 });
 
