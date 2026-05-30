@@ -1,4 +1,5 @@
 import TradingViewWidget from "@/components/TradingViewWidget";
+import WatchlistPanel from "@/components/WatchlistPanel";
 import StockHeatmap from "@/components/StockHeatmap";
 import {
     HEATMAP_WIDGET_CONFIG,
@@ -41,6 +42,11 @@ const Home = () => {
                         config={MARKET_DATA_WIDGET_CONFIG}
                         height={600}
                     />
+                </div>
+            </section>
+            <section className="grid w-full gap-8 home-section">
+                <div className="md:col-span-1 xl:col-span-1">
+                    <WatchlistPanel />
                 </div>
             </section>
         </div>
