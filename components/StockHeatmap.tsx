@@ -10,68 +10,41 @@ interface StockTile {
   changePercent: number;
 }
 
-const SYMBOLS = [
-  'AAPL','MSFT','NVDA','GOOGL','AMZN','META','TSLA','BRK.B',
-  'JPM','V','UNH','XOM','LLY','JNJ','WMT','MA','PG','MRK',
-  'HD','CVX','ABBV','KO','PEP','AVGO','COST','MCD','CSCO',
-  'BAC','ACN','TMO','ABT','NFLX','CRM','AMD','INTC','ORCL',
-];
-
 const getColor = (pct: number) => {
-  if (pct > 3) return '#0d6b3a';
+  if (pct > 3)   return '#0d6b3a';
   if (pct > 1.5) return '#148a4a';
   if (pct > 0.5) return '#1aab5c';
-  if (pct > 0) return '#1dc46a';
+  if (pct > 0)   return '#1dc46a';
   if (pct > -0.5) return '#c0392b';
   if (pct > -1.5) return '#a93226';
-  if (pct > -3) return '#922b21';
+  if (pct > -3)   return '#922b21';
   return '#7b241c';
 };
 
 const StockHeatmap = () => {
   const [tiles, setTiles] = useState<StockTile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const router = useRouter();
-  const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY || process.env.NEXT_PUBLIC_NEXT_PUBLIC_FINNHUB_API_KEY;
 
   useEffect(() => {
-    const fetchStocks = async () => {
-      try {
-        const results = await Promise.allSettled(
-          SYMBOLS.map(async (symbol) => {
-            const res = await fetch(
-              `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`
-            );
-            const data = await res.json();
-            return {
-              symbol,
-              price: data.c ?? 0,
-              change: data.d ?? 0,
-              changePercent: data.dp ?? 0,
-            } as StockTile;
-          })
-        );
-        const valid = results
-          .filter((r): r is PromiseFulfilledResult<StockTile> => r.status === 'fulfilled' && r.value.price > 0)
-          .map((r) => r.value);
-        setTiles(valid);
-      } catch (e) {
-        console.error('Heatmap fetch error', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (apiKey) fetchStocks(); else { console.error('No Finnhub API key found'); setLoading(false); }
-    else setLoading(false);
-  }, [apiKey]);
+    fetch('/api/heatmap')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setTiles(data);
+        else setError('Failed to load data');
+      })
+      .catch(() => setError('Failed to load data'))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <div className="w-full">
       <h3 className="font-semibold text-2xl text-gray-100 mb-5">Stock Heatmap</h3>
       {loading ? (
         <div className="flex items-center justify-center h-64 text-gray-400">Loading heatmap...</div>
-      ) : tiles.length === 0 ? (
-        <div className="flex items-center justify-center h-64 text-gray-400">No data available</div>
+      ) : error || tiles.length === 0 ? (
+        <div className="flex items-center justify-center h-64 text-gray-400">{error || 'No data available'}</div>
       ) : (
         <div
           className="w-full rounded-xl overflow-hidden"
