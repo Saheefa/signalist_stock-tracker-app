@@ -31,14 +31,33 @@ export const getAuth = async () => {
     return authInstance;
 }
 
-// Lazy proxy — resolves on first actual use (runtime only, not build time)
-export const auth = new Proxy({} as Awaited<ReturnType<typeof getAuth>>, {
-    get(_target, prop) {
-        return async (...args: any[]) => {
-            const instance = await getAuth();
-            const value = (instance as any)[prop];
-            if (typeof value === "function") return value.apply(instance, args);
-            return value;
-        };
-    },
-});
+// Deep lazy proxy - resolves auth instance on first use at runtime (not build time)
+// Supports nested access like auth.api.getSession(...)
+function createDeepProxy(getPath: string[] = []): any {
+    return new Proxy(function(){}, {
+        get(_target, prop: string) {
+            return createDeepProxy([...getPath, prop]);
+        },
+        apply(_target, _thisArg, args) {
+            return (async () => {
+                const instance = await getAuth();
+                // Walk the property path on the real instance
+                let value: any = instance;
+                for (const key of getPath) {
+                    value = value[key];
+                }
+                if (typeof value === "function") {
+                    // Bind to the parent object
+                    let parent: any = instance;
+                    for (const key of getPath.slice(0, -1)) {
+                        parent = parent[key];
+                    }
+                    return value.apply(parent, args);
+                }
+                return value;
+            })();
+        }
+    });
+}
+
+export const auth = createDeepProxy() as Awaited<ReturnType<typeof getAuth>>;
