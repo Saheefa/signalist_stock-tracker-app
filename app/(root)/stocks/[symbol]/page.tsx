@@ -1,5 +1,6 @@
 import TradingViewWidget from "@/components/TradingViewWidget";
 import WatchlistButton from "@/components/WatchlistButton";
+import StockPrediction from "@/components/StockPrediction";
 import {
   SYMBOL_INFO_WIDGET_CONFIG,
   CANDLE_CHART_WIDGET_CONFIG,
@@ -37,6 +38,9 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
             className="custom-chart"
             height={600}
           />
+
+          {/* ML Prediction Engine */}
+          <StockPrediction symbol={symbol} projectionDays={30} />
         </div>
 
         {/* Right column */}
