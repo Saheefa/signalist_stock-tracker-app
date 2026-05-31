@@ -14,8 +14,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Signalist",
-  description: "Track real-time stock prices, get personalized alerts and explore detailed company insights.",
+  title: "AlphaBeta",
+  description: "Track real-time stock prices, get personalized alerts and explore detailed company insights with AlphaBeta.",
 };
 
 export default function RootLayout({
