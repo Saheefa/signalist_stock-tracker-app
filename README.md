@@ -226,6 +226,6 @@ GitHub push → Vercel auto-deploy → Inngest sync → Functions live
 ---
 
 <div align="center">
-  <p>Built with ❤️ by <strong>Sahifa Hashmi</strong></p>
+  <p>Built with ❤️ by <strong>Sahifa Hashmi</strong> & <strong>Khadeejah Ashraf</strong></p>
   <p><em>AlphaBeta — Democratizing institutional-grade stock intelligence for everyone.</em></p>
 </div>
