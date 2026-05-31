@@ -6,7 +6,8 @@
   <path d="M11.5739 5.60327V13.3276L8.98597 10.7302L7.81885 12.2661V5.60327H11.5739Z" fill="#FFCE5F"/>
   <path d="M16.6797 3.08618V17.8534L16.3746 18.1424L12.9229 14.6816V3.08618H16.6797Z" fill="#FFCE5F"/>
   <path d="M21.7838 0V13.0333L20.3722 14.3658L18.628 16.0142L18.0288 16.5797V0H21.7838Z" fill="#FFCE5F"/>
-  <!-- AlphaBeta text -->
-  <text x="36" y="22" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="white" letter-spacing="0.5">Alpha</text>
-  <text x="89" y="22" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" fill="#2DFF34" letter-spacing="0.5">Beta</text>
+  <!-- AlphaBeta text - single text element to avoid gap -->
+  <text x="36" y="22" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="700" letter-spacing="0.5">
+    <tspan fill="white">Alpha</tspan><tspan fill="#2DFF34">Beta</tspan>
+  </text>
 </svg>
