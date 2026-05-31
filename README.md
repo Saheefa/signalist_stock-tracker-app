@@ -1,8 +1,6 @@
 <div align="center">
 
-  <img src="public/assets/icons/logo.svg" alt="AlphaBeta Logo" width="180"/>
-
-  <h1>AlphaBeta</h1>
+  <h1>📈 AlphaBeta</h1>
   <h3>AI-Powered Stock Intelligence Platform</h3>
 
   <p>Track real-time stock prices, get ML-based price predictions, manage your watchlist, and receive AI-summarized daily news digests — all in one place.</p>
@@ -226,6 +224,6 @@ GitHub push → Vercel auto-deploy → Inngest sync → Functions live
 ---
 
 <div align="center">
-  <p>Built with ❤️ by <strong>Sahifa Hashmi</strong> & <strong>Khadeejah Ashraf</strong></p>
+  <p>👩‍💻 <strong>Sahifa Hashmi</strong> &nbsp;|&nbsp; 👩‍💻 <strong>Khadeejah Ashraf</strong></p>
   <p><em>AlphaBeta — Democratizing institutional-grade stock intelligence for everyone.</em></p>
 </div>
