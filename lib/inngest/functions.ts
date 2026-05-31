@@ -11,10 +11,10 @@ export const sendSignUpEmail = inngest.createFunction(
     { event: 'app/user.created'},
     async ({ event, step }) => {
         const userProfile = `
-            - Country: ${event.data.country}
-            - Investment goals: ${event.data.investmentGoals}
-            - Risk tolerance: ${event.data.riskTolerance}
-            - Preferred industry: ${event.data.preferredIndustry}
+            - Country: ${event.data.country || 'Not specified'}
+            - Investment goals: ${event.data.investmentGoals || 'General investing and portfolio growth'}
+            - Risk tolerance: ${event.data.riskTolerance || 'Moderate'}
+            - Preferred industry: ${event.data.preferredIndustry || 'Diversified across sectors'}
         `
 
         const prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace('{{userProfile}}', userProfile)
