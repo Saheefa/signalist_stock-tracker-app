@@ -1,95 +1,90 @@
-/**
- * ML Prediction API Route
- * File: app/api/stocks/[symbol]/prediction/route.ts
- * GET /api/stocks/AAPL/prediction?days=30
- *
- * Uses Finnhub free-tier endpoints:
- *  - /quote for current price
- *  - Generates synthetic but realistic historical data for ML demonstration
- */
-
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeStock, PricePoint } from "@/lib/ml/stockPrediction";
+import { analyzeStock, type PricePoint } from "@/lib/ml/stockPrediction";
 
-const FINNHUB_BASE = process.env.FINNHUB_BASE_URL ?? "https://finnhub.io/api/v1";
-const FINNHUB_KEY  = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? process.env.FINNHUB_API_KEY ?? "";
+const FINNHUB_BASE = "https://finnhub.io/api/v1";
 
-interface FinnhubQuote { c: number; d: number; dp: number; h: number; l: number; o: number; pc: number; }
+/** Fetch up to `count` daily candles for `symbol` from Finnhub */
+async function fetchCandles(symbol: string, apiKey: string, days = 365): Promise<PricePoint[]> {
+  const to   = Math.floor(Date.now() / 1000);
+  const from = to - days * 24 * 60 * 60;
 
-async function fetchQuote(symbol: string): Promise<FinnhubQuote | null> {
-  try {
-    const url = `${FINNHUB_BASE}/quote?symbol=${symbol.toUpperCase()}&token=${FINNHUB_KEY}`;
-    const res = await fetch(url, { next: { revalidate: 300 } });
-    if (!res.ok) return null;
-    const data: FinnhubQuote = await res.json();
-    if (!data.c || data.c === 0) return null;
-    return data;
-  } catch { return null; }
-}
+  const url = `${FINNHUB_BASE}/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${to}&token=${apiKey}`;
+  const res  = await fetch(url, { next: { revalidate: 3600 } });
 
-// Generate smooth, spike-free price history using a deterministic linear trend
-// + two sine waves for natural-looking oscillation.
-// No randomness → no GBM rescaling distortion → no spikes ever.
-// The path always starts ~10% below currentPrice and ends exactly at currentPrice.
-function generatePriceHistory(currentPrice: number, _prevClose: number, days: number = 260): PricePoint[] {
-  // Collect the last `days` trading days (Mon–Fri) up to and including today
-  const tradingDays: Date[] = [];
-  const today = new Date();
-  for (let i = Math.ceil(days * 1.5); i >= 0 && tradingDays.length < days; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    if (d.getDay() !== 0 && d.getDay() !== 6) tradingDays.push(new Date(d));
+  if (!res.ok) throw new Error(`Finnhub candle fetch failed: ${res.status}`);
+
+  const data = await res.json();
+
+  // Finnhub returns { s: "ok"|"no_data", c: [...], t: [...], ... }
+  if (data.s !== "ok" || !Array.isArray(data.c) || data.c.length === 0) {
+    throw new Error(`No candle data for ${symbol}`);
   }
 
-  const n = tradingDays.length;
-  const startPrice = currentPrice * 0.90; // anchor ~10% below today
-
-  return tradingDays.map((d, i) => {
-    const progress = n > 1 ? i / (n - 1) : 1;
-
-    // Straight-line trend from startPrice → currentPrice
-    const trend = startPrice + (currentPrice - startPrice) * progress;
-
-    // Two sine waves with different frequencies give a realistic, natural oscillation
-    // Amplitudes are ±1.2% and ±0.8% of currentPrice — well within normal daily ranges
-    const noise =
-      Math.sin(i * 0.18) * 0.012 * currentPrice +
-      Math.sin(i * 0.07 + 1.2) * 0.008 * currentPrice;
-
-    return {
-      date: d.toISOString().split("T")[0],
-      close: parseFloat(Math.max(0, trend + noise).toFixed(2)),
-      volume: Math.floor(
-        30_000_000 + Math.abs(Math.sin(i * 0.31 + 0.5)) * 40_000_000
-      ),
-    };
-  });
+  return (data.t as number[]).map((ts: number, i: number) => ({
+    date:   new Date(ts * 1000).toISOString().split("T")[0],
+    close:  data.c[i] as number,
+    volume: data.v ? (data.v[i] as number) : undefined,
+  }));
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ symbol: string }> }) {
-  const { symbol } = await params;
+/** Fetch latest quote price for a symbol */
+async function fetchCurrentPrice(symbol: string, apiKey: string): Promise<number> {
+  const url = `${FINNHUB_BASE}/quote?symbol=${encodeURIComponent(symbol)}&token=${apiKey}`;
+  const res  = await fetch(url, { next: { revalidate: 60 } });
+  if (!res.ok) return 0;
+  const q = await res.json();
+  return q.c ?? 0;
+}
 
-  if (!symbol || typeof symbol !== "string")
-    return NextResponse.json({ error: "Invalid symbol" }, { status: 400 });
-
-  const projectionDays = Math.min(90, Math.max(7, parseInt(req.nextUrl.searchParams.get("days") ?? "30", 10)));
-
-  if (!FINNHUB_KEY)
-    return NextResponse.json({ error: "FINNHUB_API_KEY not configured" }, { status: 500 });
-
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ symbol: string }> }
+) {
   try {
-    const quote = await fetchQuote(symbol);
-    if (!quote)
-      return NextResponse.json({ error: `Could not fetch data for ${symbol}` }, { status: 404 });
+    const { symbol } = await params;
+    const upperSymbol = symbol.toUpperCase();
 
-    const history = generatePriceHistory(quote.c, quote.pc, 365);
-    if (history.length < 30)
-      return NextResponse.json({ error: `Insufficient data for ${symbol}` }, { status: 404 });
+    const apiKey =
+      process.env.FINNHUB_API_KEY ??
+      process.env.NEXT_PUBLIC_FINNHUB_API_KEY ??
+      "";
 
-    const analysis = analyzeStock(history, projectionDays);
-    return NextResponse.json({ symbol: symbol.toUpperCase(), currentPrice: quote.c, ...analysis });
-  } catch (err) {
-    console.error("[ML Prediction] Error:", err);
-    return NextResponse.json({ error: "Failed to generate prediction" }, { status: 500 });
+    if (!apiKey) {
+      return NextResponse.json({ error: "Finnhub API key not configured" }, { status: 500 });
+    }
+
+    const url = new URL(_req.url);
+    const projectionDays = Math.min(
+      90,
+      Math.max(7, parseInt(url.searchParams.get("days") ?? "30", 10))
+    );
+
+    // Fetch 1 year of daily candles (gives enough data for all ML indicators)
+    const candles = await fetchCandles(upperSymbol, apiKey, 365);
+
+    if (candles.length < 30) {
+      return NextResponse.json(
+        { error: `Not enough historical data for ${upperSymbol} (got ${candles.length} days, need ≥30)` },
+        { status: 422 }
+      );
+    }
+
+    // Run the ML analysis
+    const analysis = analyzeStock(candles, projectionDays);
+
+    // Fetch live current price separately (more accurate than last candle)
+    const currentPrice = await fetchCurrentPrice(upperSymbol, apiKey);
+
+    return NextResponse.json({
+      symbol: upperSymbol,
+      currentPrice,
+      ...analysis,
+    });
+  } catch (err: any) {
+    console.error("[prediction/route] error:", err);
+    return NextResponse.json(
+      { error: err?.message ?? "Failed to generate prediction" },
+      { status: 500 }
+    );
   }
 }
