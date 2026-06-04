@@ -23,6 +23,7 @@ interface MLResult {
   targetPrice: number; supportLevel: number; resistanceLevel: number;
   sma20: number | null; ema20: number | null; rsi14: number | null;
   rsiSignal: "Overbought" | "Neutral" | "Oversold"; dataPointsUsed: number;
+  currentPrice: number;
   predictions: PredictionPoint[]; bollingerBands: BollingerPoint[];
   anomalies: { date: string; price: number; priceZScore: number; isAnomaly: boolean }[];
   recentAnomalyCount: number; generatedAt: string;
@@ -119,32 +120,37 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
     </div>
   );
 
-  const bbMap = new Map(result.bollingerBands.map(b => [b.date, b]));
+  const bbMap  = new Map(result.bollingerBands.map(b => [b.date, b]));
+  // anomalies array holds the actual close price for every historical day
+  const closeMap = new Map(result.anomalies.map(a => [a.date, a.price]));
 
-  // Use last 90 historical points + all projected points
+  // Use last 90 historical prediction points + all projected points
   const hist = result.predictions.filter(p => !p.isProjected).slice(-90);
   const proj = result.predictions.filter(p => p.isProjected);
 
-  // Build ONE unified dataset. Each row has:
-  //   trendLine      — regression value for historical days (undefined for projected)
-  //   projectedLine  — regression value for projected days (also set on last hist point to join the lines)
-  //   bollinger keys — from bbMap
-  const allChart = [...hist, ...proj].map((p, idx, arr) => {
-    const bb = bbMap.get(p.date);
+  // Build ONE unified dataset for the ComposedChart.
+  // Keys per row:
+  //   actualPrice   — real simulated close price (historical rows only)
+  //   trendLine     — linear regression value (historical rows only)
+  //   projectedLine — regression projection (projected rows + last hist to connect)
+  //   boll*         — Bollinger band values where available
+  const allChart = [...hist, ...proj].map((p, idx) => {
+    const bb     = bbMap.get(p.date);
     const isLast = idx === hist.length - 1;
     return {
-      date: p.date,
-      label: fd(p.date),
-      isProjected: p.isProjected,
+      date:          p.date,
+      label:         fd(p.date),
+      isProjected:   p.isProjected,
+      actualPrice:   !p.isProjected ? (closeMap.get(p.date) ?? undefined) : undefined,
       trendLine:     (!p.isProjected || isLast) ? p.price : undefined,
-      projectedLine: (p.isProjected || isLast)  ? p.price : undefined,
-      bollUpper:  bb?.upper,
-      bollMiddle: bb?.middle,
-      bollLower:  bb?.lower,
+      projectedLine: (p.isProjected  || isLast) ? p.price : undefined,
+      bollUpper:     bb?.upper,
+      bollMiddle:    bb?.middle,
+      bollLower:     bb?.lower,
     };
   });
 
-  const color = trendColor(result.trendLabel);
+  const color     = trendColor(result.trendLabel);
   const todayDate = hist[hist.length - 1]?.date;
 
   return (
@@ -188,25 +194,30 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
 
       <div className="rounded-xl border border-white/10 bg-black/20 p-4">
         <ResponsiveContainer width="100%" height={320}>
-          {/* Single unified dataset — all series share the same x-axis positions */}
-          <ComposedChart data={allChart} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+          <ComposedChart data={allChart} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
             <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} interval={Math.floor(allChart.length / 8)} tickLine={false} axisLine={false} />
             <YAxis tick={{ fontSize: 10, fill: "#64748b" }} tickFormatter={v => `$${v}`} tickLine={false} axisLine={false} width={56} domain={["auto", "auto"]} />
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8", paddingTop: 8 }} />
+
+            {/* Bollinger bands — drawn first so price lines render on top */}
             {showBollinger && <>
               <Area dataKey="bollUpper" name="BB Upper" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 2" fill="none" dot={false} legendType="none" connectNulls />
               <Area dataKey="bollLower" name="BB Lower" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 2" fill="#3b82f6" fillOpacity={0.06} dot={false} legendType="none" connectNulls />
               <Line dataKey="bollMiddle" name="SMA 20" stroke="#3b82f6" strokeWidth={1} dot={false} strokeOpacity={0.5} connectNulls />
             </>}
-            {/* trendLine is set only for historical points → solid line covering left portion */}
-            <Line dataKey="trendLine" name="Trend (historical)" stroke={color} strokeWidth={2} dot={false} connectNulls={false} />
-            {/* projectedLine is set only for projected points (+ last hist point to join) → dashed line on right */}
+
+            {/* Actual simulated close prices — white/grey line showing the price history */}
+            <Line dataKey="actualPrice" name="Price" stroke="#e2e8f0" strokeWidth={1.5} dot={false} strokeOpacity={0.7} connectNulls={false} legendType="line" />
+
+            {/* Regression trend line — solid for history, dashed for projection */}
+            <Line dataKey="trendLine"     name="Trend"                    stroke={color} strokeWidth={2}   dot={false} connectNulls={false} />
             <Line dataKey="projectedLine" name={`Projected (${projectionDays}d)`} stroke={color} strokeWidth={2} strokeDasharray="6 3" dot={false} strokeOpacity={0.8} connectNulls={false} />
-            {todayDate && <ReferenceLine x={fd(todayDate)} stroke="rgba(255,255,255,0.3)" strokeDasharray="3 3" label={{ value: "Today", position: "top", fontSize: 10, fill: "#94a3b8" }} />}
-            <ReferenceLine y={result.supportLevel} stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.4} label={{ value: "Support", position: "right", fontSize: 9, fill: "#22c55e" }} />
-            <ReferenceLine y={result.resistanceLevel} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.4} label={{ value: "Resist", position: "right", fontSize: 9, fill: "#ef4444" }} />
+
+            {todayDate && <ReferenceLine x={fd(todayDate)} stroke="rgba(255,255,255,0.25)" strokeDasharray="3 3" label={{ value: "Today", position: "top", fontSize: 10, fill: "#64748b" }} />}
+            <ReferenceLine y={result.supportLevel}    stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Support", position: "insideRight", fontSize: 9, fill: "#22c55e" }} />
+            <ReferenceLine y={result.resistanceLevel} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Resist",  position: "insideRight", fontSize: 9, fill: "#ef4444" }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
