@@ -3,18 +3,21 @@
 /**
  * StockPrediction Component
  * File: components/StockPrediction.tsx
+ *
+ * Usage — add to your stock detail page:
+ *   import StockPrediction from "@/components/StockPrediction";
+ *   <StockPrediction symbol={params.symbol} />
  */
 
 import React, { useEffect, useState, useCallback } from "react";
 import {
-  ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip,
+  ComposedChart, Line, Area, XAxis, YAxis, Tooltip,
   CartesianGrid, ReferenceLine, ResponsiveContainer, Legend,
 } from "recharts";
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, RefreshCw } from "lucide-react";
 
 interface PredictionPoint { date: string; price: number; isProjected: boolean; }
-interface BollingerPoint  { date: string; price: number; upper: number; middle: number; lower: number; }
-interface AnomalyPoint    { date: string; price: number; priceZScore: number; volumeZScore?: number; isAnomaly: boolean; }
+interface BollingerPoint { date: string; price: number; upper: number; middle: number; lower: number; }
 interface MLResult {
   symbol: string; trendLabel: string; trendSlope: number; confidenceScore: number;
   targetPrice: number; supportLevel: number; resistanceLevel: number;
@@ -22,7 +25,7 @@ interface MLResult {
   rsiSignal: "Overbought" | "Neutral" | "Oversold"; dataPointsUsed: number;
   currentPrice: number;
   predictions: PredictionPoint[]; bollingerBands: BollingerPoint[];
-  anomalies: AnomalyPoint[];
+  anomalies: { date: string; price: number; priceZScore: number; isAnomaly: boolean }[];
   recentAnomalyCount: number; generatedAt: string;
 }
 
@@ -53,7 +56,7 @@ function RSIGauge({ value, signal }: { value: number | null; signal: string }) {
         <div className="absolute left-0 top-0 h-full rounded-full transition-all duration-700"
           style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }} />
         <div className="absolute top-0 h-full w-px bg-yellow-400/60" style={{ left: "30%" }} />
-        <div className="absolute top-0 h-full w-px bg-red-400/60"    style={{ left: "70%" }} />
+        <div className="absolute top-0 h-full w-px bg-red-400/60" style={{ left: "70%" }} />
       </div>
       <div className="flex justify-between mt-1 text-xs text-gray-500">
         <span>Oversold</span>
@@ -76,32 +79,21 @@ function CustomTooltip({ active, payload, label }: any) {
           <span className="font-mono">${Number(p.value).toFixed(2)}</span>
         </div>
       ))}
-      {item?.isAnomaly && (
-        <div className="mt-1 text-orange-400 font-semibold">⚠ Anomaly (z={item.priceZScore})</div>
-      )}
       {item?.isProjected && <div className="mt-1 text-yellow-400/80 italic">Projected</div>}
     </div>
   );
 }
 
-/** Renders anomaly dots on the chart — orange filled circles */
-function AnomalyDot(props: any) {
-  const { cx, cy, payload } = props;
-  if (!payload?.isAnomaly) return null;
-  return <circle cx={cx} cy={cy} r={5} fill="#f97316" stroke="#fff" strokeWidth={1} opacity={0.9} />;
-}
-
 export default function StockPrediction({ symbol, projectionDays = 30 }: { symbol: string; projectionDays?: number }) {
-  const [result, setResult]           = useState<MLResult | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
+  const [result, setResult] = useState<MLResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showBollinger, setShowBollinger] = useState(true);
-  const [showAnomalies, setShowAnomalies] = useState(true);
 
   const fetchPrediction = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const res  = await fetch(`/api/stocks/${symbol}/prediction?days=${projectionDays}`);
+      const res = await fetch(`/api/stocks/${symbol}/prediction?days=${projectionDays}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Unknown error");
       setResult(data);
@@ -128,26 +120,28 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
     </div>
   );
 
-  const bbMap    = new Map(result.bollingerBands.map(b => [b.date, b]));
-  const closeMap = new Map(result.anomalies.map(a => [a.date, a]));
+  const bbMap  = new Map(result.bollingerBands.map(b => [b.date, b]));
+  // anomalies array holds the actual close price for every historical day
+  const closeMap = new Map(result.anomalies.map(a => [a.date, a.price]));
 
+  // Use last 90 historical prediction points + all projected points
   const hist = result.predictions.filter(p => !p.isProjected).slice(-90);
   const proj = result.predictions.filter(p => p.isProjected);
 
+  // Build ONE unified dataset for the ComposedChart.
+  // Keys per row:
+  //   actualPrice   — real simulated close price (historical rows only)
+  //   trendLine     — linear regression value (historical rows only)
+  //   projectedLine — regression projection (projected rows + last hist to connect)
+  //   boll*         — Bollinger band values where available
   const allChart = [...hist, ...proj].map((p, idx) => {
-    const bb      = bbMap.get(p.date);
-    const anomaly = closeMap.get(p.date);
-    const isLast  = idx === hist.length - 1;
+    const bb     = bbMap.get(p.date);
+    const isLast = idx === hist.length - 1;
     return {
       date:          p.date,
       label:         fd(p.date),
       isProjected:   p.isProjected,
-      // Real close price (from anomalies array which has actual closes)
-      actualPrice:   !p.isProjected ? (anomaly?.price ?? undefined) : undefined,
-      // Anomaly dot — only show price value when it IS an anomaly
-      anomalyDot:    (!p.isProjected && anomaly?.isAnomaly) ? anomaly.price : undefined,
-      priceZScore:   anomaly?.priceZScore,
-      isAnomaly:     anomaly?.isAnomaly ?? false,
+      actualPrice:   !p.isProjected ? (closeMap.get(p.date) ?? undefined) : undefined,
       trendLine:     (!p.isProjected || isLast) ? p.price : undefined,
       projectedLine: (p.isProjected  || isLast) ? p.price : undefined,
       bollUpper:     bb?.upper,
@@ -159,15 +153,8 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
   const color     = trendColor(result.trendLabel);
   const todayDate = hist[hist.length - 1]?.date;
 
-  // Collect anomaly events for the table (last 30 days only)
-  const anomalyEvents = result.anomalies
-    .filter(a => a.isAnomaly)
-    .slice(-20)      // show at most 20
-    .reverse();      // newest first
-
   return (
     <section className="rounded-2xl border border-white/10 bg-gray-900/60 backdrop-blur-sm p-6 space-y-6">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-white">
@@ -181,37 +168,30 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
             className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${showBollinger ? "border-blue-500/50 bg-blue-500/20 text-blue-300" : "border-white/10 text-gray-400"}`}>
             Bollinger Bands
           </button>
-          <button onClick={() => setShowAnomalies(v => !v)}
-            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${showAnomalies ? "border-orange-500/50 bg-orange-500/20 text-orange-300" : "border-white/10 text-gray-400"}`}>
-            Anomalies
-          </button>
           <button onClick={fetchPrediction} className="p-1.5 rounded-full border border-white/10 text-gray-400 hover:text-white">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Anomaly banner */}
       {result.recentAnomalyCount > 0 && (
-        <div className="flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-300">
+        <div className="flex items-center gap-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span><strong>{result.recentAnomalyCount}</strong> price anomal{result.recentAnomalyCount === 1 ? "y" : "ies"} detected in the last 30 days. Orange dots on chart.</span>
+          <span><strong>{result.recentAnomalyCount}</strong> price anomal{result.recentAnomalyCount === 1 ? "y" : "ies"} detected in the last 30 days.</span>
         </div>
       )}
 
-      {/* Signal cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <SignalCard title="Trend"            value={result.trendLabel}         sub={`${result.trendSlope >= 0 ? "+" : ""}${result.trendSlope}/day`} color={color} />
+        <SignalCard title="Trend" value={result.trendLabel} sub={`${result.trendSlope >= 0 ? "+" : ""}${result.trendSlope}/day`} color={color} />
         <SignalCard title={`Target (${projectionDays}d)`} value={fp(result.targetPrice)} color={color} />
-        <SignalCard title="Confidence"       value={`${result.confidenceScore}%`} sub="Model fit (R²)" />
-        <SignalCard title="SMA 20"           value={fp(result.sma20)} />
-        <SignalCard title="EMA 20"           value={fp(result.ema20)} />
-        <SignalCard title="Support"          value={fp(result.supportLevel)} sub={`Resist: ${fp(result.resistanceLevel)}`} />
+        <SignalCard title="Confidence" value={`${result.confidenceScore}%`} sub="Model fit (R²)" />
+        <SignalCard title="SMA 20" value={fp(result.sma20)} />
+        <SignalCard title="EMA 20" value={fp(result.ema20)} />
+        <SignalCard title="Support" value={fp(result.supportLevel)} sub={`Resist: ${fp(result.resistanceLevel)}`} />
       </div>
 
       <RSIGauge value={result.rsi14} signal={result.rsiSignal} />
 
-      {/* Chart */}
       <div className="rounded-xl border border-white/10 bg-black/20 p-4">
         <ResponsiveContainer width="100%" height={320}>
           <ComposedChart data={allChart} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
@@ -221,29 +201,19 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8", paddingTop: 8 }} />
 
+            {/* Bollinger bands — upper/lower as plain lines, no fill to avoid the solid block artifact */}
             {showBollinger && <>
-              <Line dataKey="bollUpper"  name="BB Upper" stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="3 3" dot={false} legendType="none"      connectNulls strokeOpacity={0.6} />
-              <Line dataKey="bollLower"  name="BB Lower" stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="3 3" dot={false} legendType="none"      connectNulls strokeOpacity={0.6} />
-              <Line dataKey="bollMiddle" name="SMA 20"   stroke="#3b82f6" strokeWidth={1.2}                       dot={false} strokeOpacity={0.9}     connectNulls legendType="plainline" />
+              <Line dataKey="bollUpper"  name="BB Upper" stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="3 3" dot={false} legendType="none" connectNulls strokeOpacity={0.6} />
+              <Line dataKey="bollLower"  name="BB Lower" stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="3 3" dot={false} legendType="none" connectNulls strokeOpacity={0.6} />
+              <Line dataKey="bollMiddle" name="SMA 20"   stroke="#3b82f6" strokeWidth={1.2} dot={false} strokeOpacity={0.9} connectNulls legendType="plainline" />
             </>}
 
-            {/* Actual close price history */}
+            {/* Actual simulated close prices — subtle white line showing price history */}
             <Line dataKey="actualPrice" name="Price" stroke="#94a3b8" strokeWidth={1.5} dot={false} strokeOpacity={0.6} connectNulls={false} legendType="plainline" />
 
-            {/* Regression trend */}
-            <Line dataKey="trendLine"     name="Trend (historical)"          stroke={color} strokeWidth={2}   dot={false} connectNulls={false} legendType="plainline" />
+            {/* Regression trend line — solid for history, dashed for projection */}
+            <Line dataKey="trendLine"     name="Trend (historical)"        stroke={color} strokeWidth={2}   dot={false} connectNulls={false} legendType="plainline" />
             <Line dataKey="projectedLine" name={`Projected (${projectionDays}d)`} stroke={color} strokeWidth={2} strokeDasharray="6 3" dot={false} strokeOpacity={0.85} connectNulls={false} legendType="plainline" />
-
-            {/* Anomaly dots — orange circles overlaid on the price line */}
-            {showAnomalies && (
-              <Scatter
-                dataKey="anomalyDot"
-                name="Anomaly"
-                shape={<AnomalyDot />}
-                legendType="circle"
-                fill="#f97316"
-              />
-            )}
 
             {todayDate && <ReferenceLine x={fd(todayDate)} stroke="rgba(255,255,255,0.25)" strokeDasharray="3 3" label={{ value: "Today", position: "top", fontSize: 10, fill: "#64748b" }} />}
             <ReferenceLine y={result.supportLevel}    stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Support", position: "insideRight", fontSize: 9, fill: "#22c55e" }} />
@@ -251,58 +221,6 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-
-      {/* Anomaly events table */}
-      {anomalyEvents.length > 0 && (
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-orange-400" />
-            Detected Anomalies
-            <span className="text-xs font-normal text-gray-500">— unusual price spikes / dips (|z-score| &gt; 2.5)</span>
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead>
-                <tr className="text-gray-500 border-b border-white/10">
-                  <th className="pb-2 pr-4 font-medium">Date</th>
-                  <th className="pb-2 pr-4 font-medium">Close Price</th>
-                  <th className="pb-2 pr-4 font-medium">Price Z-Score</th>
-                  <th className="pb-2      font-medium">Signal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {anomalyEvents.map((a) => {
-                  const z      = a.priceZScore;
-                  const isSpike = z > 0;
-                  return (
-                    <tr key={a.date} className="border-b border-white/5 hover:bg-white/5">
-                      <td className="py-2 pr-4 text-gray-300">{fd(a.date)}</td>
-                      <td className="py-2 pr-4 text-white font-mono">{fp(a.price)}</td>
-                      <td className="py-2 pr-4">
-                        <span className={`font-mono font-semibold ${Math.abs(z) > 3 ? "text-red-400" : "text-orange-400"}`}>
-                          {z > 0 ? "+" : ""}{z.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="py-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isSpike ? "bg-red-500/20 text-red-300" : "bg-green-500/20 text-green-300"}`}>
-                          {isSpike ? "Price Spike" : "Price Dip"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {anomalyEvents.length === 0 && (
-        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-gray-500 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-gray-600" />
-          No significant price anomalies detected in the available history.
-        </div>
-      )}
 
       <p className="text-xs text-gray-600 text-center">
         ⚠ ML predictions are for educational purposes only and do not constitute financial advice.
