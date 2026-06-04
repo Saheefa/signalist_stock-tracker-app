@@ -201,19 +201,19 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8", paddingTop: 8 }} />
 
-            {/* Bollinger bands — drawn first so price lines render on top */}
+            {/* Bollinger bands — upper/lower as plain lines, no fill to avoid the solid block artifact */}
             {showBollinger && <>
-              <Area dataKey="bollUpper" name="BB Upper" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 2" fill="none" dot={false} legendType="none" connectNulls />
-              <Area dataKey="bollLower" name="BB Lower" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 2" fill="#3b82f6" fillOpacity={0.06} dot={false} legendType="none" connectNulls />
-              <Line dataKey="bollMiddle" name="SMA 20" stroke="#3b82f6" strokeWidth={1} dot={false} strokeOpacity={0.5} connectNulls />
+              <Line dataKey="bollUpper"  name="BB Upper" stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="3 3" dot={false} legendType="none" connectNulls strokeOpacity={0.6} />
+              <Line dataKey="bollLower"  name="BB Lower" stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="3 3" dot={false} legendType="none" connectNulls strokeOpacity={0.6} />
+              <Line dataKey="bollMiddle" name="SMA 20"   stroke="#3b82f6" strokeWidth={1.2} dot={false} strokeOpacity={0.9} connectNulls />
             </>}
 
-            {/* Actual simulated close prices — white/grey line showing the price history */}
-            <Line dataKey="actualPrice" name="Price" stroke="#e2e8f0" strokeWidth={1.5} dot={false} strokeOpacity={0.7} connectNulls={false} legendType="line" />
+            {/* Actual simulated close prices — subtle white line showing price history */}
+            <Line dataKey="actualPrice" name="Price" stroke="#94a3b8" strokeWidth={1.5} dot={false} strokeOpacity={0.6} connectNulls={false} legendType="line" />
 
             {/* Regression trend line — solid for history, dashed for projection */}
-            <Line dataKey="trendLine"     name="Trend"                    stroke={color} strokeWidth={2}   dot={false} connectNulls={false} />
-            <Line dataKey="projectedLine" name={`Projected (${projectionDays}d)`} stroke={color} strokeWidth={2} strokeDasharray="6 3" dot={false} strokeOpacity={0.8} connectNulls={false} />
+            <Line dataKey="trendLine"     name="Trend (historical)"        stroke={color} strokeWidth={2}   dot={false} connectNulls={false} />
+            <Line dataKey="projectedLine" name={`Projected (${projectionDays}d)`} stroke={color} strokeWidth={2} strokeDasharray="6 3" dot={false} strokeOpacity={0.85} connectNulls={false} />
 
             {todayDate && <ReferenceLine x={fd(todayDate)} stroke="rgba(255,255,255,0.25)" strokeDasharray="3 3" label={{ value: "Today", position: "top", fontSize: 10, fill: "#64748b" }} />}
             <ReferenceLine y={result.supportLevel}    stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Support", position: "insideRight", fontSize: 9, fill: "#22c55e" }} />
