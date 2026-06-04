@@ -32,10 +32,21 @@ function generatePriceHistory(currentPrice: number, prevClose: number, days: num
   const points: PricePoint[] = [];
   const today = new Date();
   
-  // Infer daily volatility from the day's move
+  // Use a fixed realistic volatility typical for US large-cap stocks (1.5%)
+  // Capped to prevent GBM spikes from distorting the chart
   const dailyReturn = prevClose > 0 ? (currentPrice - prevClose) / prevClose : 0;
-  const volatility = Math.max(0.01, Math.abs(dailyReturn) * 3 || 0.015); // ~1.5% default
-  const drift = 0.0003; // slight upward drift
+  const inferredVol = Math.abs(dailyReturn);
+  // Cap at 2% max daily volatility to avoid chart distortion
+  const volatility = Math.min(0.02, Math.max(0.008, inferredVol || 0.015));
+  const drift = 0.0002; // realistic daily market drift (~5% annual)
+
+  // Use normally-distributed random walk (Box-Muller transform) for smoother simulation
+  function gaussianRand(): number {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  }
 
   // Walk backwards from current price
   let price = currentPrice;
@@ -47,10 +58,10 @@ function generatePriceHistory(currentPrice: number, prevClose: number, days: num
     // Skip weekends
     if (date.getDay() === 0 || date.getDay() === 6) continue;
     rawPoints.push({ date: date.toISOString().split("T")[0], price });
-    // Step backwards
-    const rand = (Math.random() - 0.5) * 2;
+    // Step backwards using Gaussian noise (more realistic than uniform random)
+    const rand = gaussianRand();
     price = price / Math.exp((drift - 0.5 * volatility ** 2) + volatility * rand);
-    price = Math.max(price, currentPrice * 0.3); // floor
+    price = Math.max(price, currentPrice * 0.5); // floor at 50% of current price
   }
 
   // Reverse so oldest first
