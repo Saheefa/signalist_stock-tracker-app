@@ -205,15 +205,15 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
             {showBollinger && <>
               <Line dataKey="bollUpper"  name="BB Upper" stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="3 3" dot={false} legendType="none" connectNulls strokeOpacity={0.6} />
               <Line dataKey="bollLower"  name="BB Lower" stroke="#3b82f6" strokeWidth={0.8} strokeDasharray="3 3" dot={false} legendType="none" connectNulls strokeOpacity={0.6} />
-              <Line dataKey="bollMiddle" name="SMA 20"   stroke="#3b82f6" strokeWidth={1.2} dot={false} strokeOpacity={0.9} connectNulls />
+              <Line dataKey="bollMiddle" name="SMA 20"   stroke="#3b82f6" strokeWidth={1.2} dot={false} strokeOpacity={0.9} connectNulls legendType="plainline" />
             </>}
 
             {/* Actual simulated close prices — subtle white line showing price history */}
-            <Line dataKey="actualPrice" name="Price" stroke="#94a3b8" strokeWidth={1.5} dot={false} strokeOpacity={0.6} connectNulls={false} legendType="line" />
+            <Line dataKey="actualPrice" name="Price" stroke="#94a3b8" strokeWidth={1.5} dot={false} strokeOpacity={0.6} connectNulls={false} legendType="plainline" />
 
             {/* Regression trend line — solid for history, dashed for projection */}
-            <Line dataKey="trendLine"     name="Trend (historical)"        stroke={color} strokeWidth={2}   dot={false} connectNulls={false} />
-            <Line dataKey="projectedLine" name={`Projected (${projectionDays}d)`} stroke={color} strokeWidth={2} strokeDasharray="6 3" dot={false} strokeOpacity={0.85} connectNulls={false} />
+            <Line dataKey="trendLine"     name="Trend (historical)"        stroke={color} strokeWidth={2}   dot={false} connectNulls={false} legendType="plainline" />
+            <Line dataKey="projectedLine" name={`Projected (${projectionDays}d)`} stroke={color} strokeWidth={2} strokeDasharray="6 3" dot={false} strokeOpacity={0.85} connectNulls={false} legendType="plainline" />
 
             {todayDate && <ReferenceLine x={fd(todayDate)} stroke="rgba(255,255,255,0.25)" strokeDasharray="3 3" label={{ value: "Today", position: "top", fontSize: 10, fill: "#64748b" }} />}
             <ReferenceLine y={result.supportLevel}    stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: "Support", position: "insideRight", fontSize: 9, fill: "#22c55e" }} />
