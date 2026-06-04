@@ -143,7 +143,7 @@ function zScores(values: number[]): number[] {
   return values.map(v => sd === 0 ? 0 : parseFloat(((v - mean) / sd).toFixed(3)));
 }
 
-function detectAnomalies(data: PricePoint[], threshold = 2.5): AnomalyPoint[] {
+function detectAnomalies(data: PricePoint[], threshold = 1.8): AnomalyPoint[] {
   const priceZ = zScores(data.map(d => d.close));
   const volumeZ = data[0]?.volume !== undefined ? zScores(data.map(d => d.volume ?? 0)) : null;
   return data.map((point, i) => ({

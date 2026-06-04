@@ -142,6 +142,7 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
       label:         fd(p.date),
       isProjected:   p.isProjected,
       actualPrice:   !p.isProjected ? (closeMap.get(p.date) ?? undefined) : undefined,
+      anomalyPrice:  !p.isProjected && result.anomalies.find(a => a.date === p.date && a.isAnomaly) ? (closeMap.get(p.date) ?? undefined) : undefined,
       trendLine:     (!p.isProjected || isLast) ? p.price : undefined,
       projectedLine: (p.isProjected  || isLast) ? p.price : undefined,
       bollUpper:     bb?.upper,
@@ -210,6 +211,18 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
 
             {/* Actual simulated close prices — subtle white line showing price history */}
             <Line dataKey="actualPrice" name="Price" stroke="#94a3b8" strokeWidth={1.5} dot={false} strokeOpacity={0.6} connectNulls={false} legendType="plainline" />
+            <Line dataKey="anomalyPrice" name="Anomaly" stroke="#ef4444" strokeWidth={0} connectNulls={false} legendType="none"
+              dot={(props: any) => {
+                const { cx, cy, payload } = props;
+                if (!payload?.anomalyPrice) return <g key={payload?.date} />;
+                return (
+                  <g key={payload?.date}>
+                    <circle cx={cx} cy={cy} r={5} fill="#ef4444" stroke="#fff" strokeWidth={1.5} opacity={0.9} />
+                    <circle cx={cx} cy={cy} r={9} fill="none" stroke="#ef4444" strokeWidth={1} opacity={0.4} />
+                  </g>
+                );
+              }}
+            />
 
             {/* Regression trend line — solid for history, dashed for projection */}
             <Line dataKey="trendLine"     name="Trend (historical)"        stroke={color} strokeWidth={2}   dot={false} connectNulls={false} legendType="plainline" />
