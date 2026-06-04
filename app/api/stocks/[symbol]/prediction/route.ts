@@ -27,49 +27,47 @@ async function fetchQuote(symbol: string): Promise<FinnhubQuote | null> {
   } catch { return null; }
 }
 
-// Generate realistic price history using geometric Brownian motion from a real current price
-function generatePriceHistory(currentPrice: number, prevClose: number, days: number = 365): PricePoint[] {
-  const points: PricePoint[] = [];
-  const today = new Date();
-  
-  // Use a fixed realistic volatility typical for US large-cap stocks (1.5%)
-  // Capped to prevent GBM spikes from distorting the chart
-  const dailyReturn = prevClose > 0 ? (currentPrice - prevClose) / prevClose : 0;
-  const inferredVol = Math.abs(dailyReturn);
-  // Cap at 2% max daily volatility to avoid chart distortion
-  const volatility = Math.min(0.02, Math.max(0.008, inferredVol || 0.015));
-  const drift = 0.0002; // realistic daily market drift (~5% annual)
-
-  // Use normally-distributed random walk (Box-Muller transform) for smoother simulation
-  function gaussianRand(): number {
+// Generate realistic price history walking FORWARDS from a start price
+// Anchored so the last generated price equals currentPrice (no backward-walk spikes)
+function generatePriceHistory(currentPrice: number, prevClose: number, days: number = 260): PricePoint[] {
+  // Gaussian random (Box-Muller) — stock returns follow normal distribution
+  function gauss(): number {
     let u = 0, v = 0;
     while (u === 0) u = Math.random();
     while (v === 0) v = Math.random();
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
   }
 
-  // Walk backwards from current price
-  let price = currentPrice;
-  const rawPoints: { date: string; price: number }[] = [];
+  // Use a conservative fixed volatility (1.2%) — realistic for large-cap US stocks
+  const volatility = 0.012;
+  const drift = 0.0003;
 
-  for (let i = 0; i < days; i++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-    // Skip weekends
-    if (date.getDay() === 0 || date.getDay() === 6) continue;
-    rawPoints.push({ date: date.toISOString().split("T")[0], price });
-    // Step backwards using Gaussian noise (more realistic than uniform random)
-    const rand = gaussianRand();
-    price = price / Math.exp((drift - 0.5 * volatility ** 2) + volatility * rand);
-    price = Math.max(price, currentPrice * 0.5); // floor at 50% of current price
+  // Collect trading days going back `days` from today
+  const tradingDays: Date[] = [];
+  const today = new Date();
+  for (let i = days * 1.5; i >= 0 && tradingDays.length < days; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    if (d.getDay() !== 0 && d.getDay() !== 6) tradingDays.push(new Date(d));
   }
 
-  // Reverse so oldest first
-  rawPoints.reverse().forEach(({ date, price }, i) => {
-    points.push({ date, close: parseFloat(price.toFixed(2)), volume: Math.floor(Math.random() * 50_000_000 + 10_000_000) });
-  });
+  // Generate a forward GBM path of length `days`
+  const rawPrices: number[] = [currentPrice * 0.85]; // start ~15% below current
+  for (let i = 1; i < tradingDays.length; i++) {
+    const prev = rawPrices[i - 1];
+    const next = prev * Math.exp((drift - 0.5 * volatility ** 2) + volatility * gauss());
+    rawPrices.push(next);
+  }
 
-  return points;
+  // Rescale the entire path so it ends exactly at currentPrice
+  const scale = currentPrice / rawPrices[rawPrices.length - 1];
+  const scaledPrices = rawPrices.map(p => p * scale);
+
+  return tradingDays.map((d, i) => ({
+    date: d.toISOString().split("T")[0],
+    close: parseFloat(scaledPrices[i].toFixed(2)),
+    volume: Math.floor(Math.random() * 50_000_000 + 10_000_000),
+  }));
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ symbol: string }> }) {
