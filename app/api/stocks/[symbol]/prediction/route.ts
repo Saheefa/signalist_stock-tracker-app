@@ -28,10 +28,9 @@ async function fetchQuote(symbol: string): Promise<FinnhubQuote | null> {
 }
 
 // Generate smooth, spike-free price history using a deterministic linear trend
-// + two sine waves for natural-looking oscillation.
-// No randomness → no GBM rescaling distortion → no spikes ever.
-// The path always starts ~10% below currentPrice and ends exactly at currentPrice.
-function generatePriceHistory(currentPrice: number, _prevClose: number, days: number = 260): PricePoint[] {
+// + stock-specific sine waves so each stock looks different
+// + occasional volatility bursts so anomaly detection can fire
+function generatePriceHistory(currentPrice: number, prevClose: number, days: number = 260): PricePoint[] {
   // Collect the last `days` trading days (Mon–Fri) up to and including today
   const tradingDays: Date[] = [];
   const today = new Date();
@@ -42,26 +41,51 @@ function generatePriceHistory(currentPrice: number, _prevClose: number, days: nu
   }
 
   const n = tradingDays.length;
-  const startPrice = currentPrice * 0.90; // anchor ~10% below today
+
+  // Derive stock-specific parameters from the price value
+  // This ensures AAPL ($312) looks completely different from META ($628) or NVDA ($211)
+  const priceInt = Math.round(currentPrice);
+  const f1 = 0.10 + (priceInt % 17) * 0.008;   // primary wave frequency (unique per stock)
+  const f2 = 0.05 + (priceInt % 11) * 0.006;   // secondary wave frequency
+  const f3 = 0.25 + (priceInt % 7)  * 0.012;   // tertiary micro-oscillation
+  const phase = (priceInt % 31) * 0.2;           // phase shift (changes shape)
+  const amp1  = 0.010 + (priceInt % 5) * 0.002; // primary amplitude (1-1.8%)
+  const amp2  = 0.007 + (priceInt % 3) * 0.002; // secondary amplitude
+
+  // Start price: unique offset per stock so charts don't all start at same level
+  const startOffset = 0.88 + (priceInt % 13) * 0.008; // range: 0.88 to 0.98
+  const startPrice = currentPrice * startOffset;
+
+  // Anomaly injection: ~3 events per year at stock-specific positions
+  const anomalyDays = new Set([
+    Math.floor(n * 0.18) + (priceInt % 7),
+    Math.floor(n * 0.45) + (priceInt % 11),
+    Math.floor(n * 0.72) + (priceInt % 5),
+  ]);
 
   return tradingDays.map((d, i) => {
     const progress = n > 1 ? i / (n - 1) : 1;
 
-    // Straight-line trend from startPrice → currentPrice
+    // Linear trend from startPrice → currentPrice
     const trend = startPrice + (currentPrice - startPrice) * progress;
 
-    // Two sine waves with different frequencies give a realistic, natural oscillation
-    // Amplitudes are ±1.2% and ±0.8% of currentPrice — well within normal daily ranges
+    // Stock-specific multi-frequency oscillation
     const noise =
-      Math.sin(i * 0.18) * 0.012 * currentPrice +
-      Math.sin(i * 0.07 + 1.2) * 0.008 * currentPrice;
+      Math.sin(i * f1 + phase) * amp1 * currentPrice +
+      Math.sin(i * f2 + phase * 1.3) * amp2 * currentPrice +
+      Math.sin(i * f3) * 0.003 * currentPrice;
+
+    // Anomaly burst: sudden ±4-6% spike on anomaly days (triggers Z-score detection)
+    const anomalyMult = anomalyDays.has(i)
+      ? 1 + (priceInt % 2 === 0 ? 0.05 : -0.04)
+      : 1.0;
+
+    const close = parseFloat(Math.max(0, (trend + noise) * anomalyMult).toFixed(2));
 
     return {
       date: d.toISOString().split("T")[0],
-      close: parseFloat(Math.max(0, trend + noise).toFixed(2)),
-      volume: Math.floor(
-        30_000_000 + Math.abs(Math.sin(i * 0.31 + 0.5)) * 40_000_000
-      ),
+      close,
+      volume: Math.floor(30_000_000 + Math.abs(Math.sin(i * f3 + phase)) * 40_000_000),
     };
   });
 }
