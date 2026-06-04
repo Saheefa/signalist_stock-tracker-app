@@ -125,10 +125,27 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
   const projWithJoin = [hist[hist.length - 1], ...proj];
   const allChart = [...hist, ...proj].map(p => {
     const bb = bbMap.get(p.date);
-    return { ...p, label: fd(p.date), bollUpper: bb?.upper, bollMiddle: bb?.middle, bollLower: bb?.lower };
+    return {
+      ...p,
+      label: fd(p.date),
+      trendLine: p.price,
+      bollUpper: bb?.upper,
+      bollMiddle: bb?.middle,
+      bollLower: bb?.lower,
+    };
   });
   const histChart = allChart.filter(d => !d.isProjected);
-  const projChart = projWithJoin.map(p => ({ ...p, label: fd(p.date), ...Object.fromEntries(["bollUpper","bollMiddle","bollLower"].map(k => [k, bbMap.get(p?.date)?.[k as keyof BollingerPoint]])) }));
+  const projChart = projWithJoin.map(p => {
+    const bb = bbMap.get(p.date);
+    return {
+      ...p,
+      label: fd(p.date),
+      trendLine: p.price,
+      bollUpper: bb?.upper,
+      bollMiddle: bb?.middle,
+      bollLower: bb?.lower,
+    };
+  });
   const color = trendColor(result.trendLabel);
   const todayDate = hist[hist.length - 1]?.date;
 
