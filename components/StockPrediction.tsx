@@ -120,32 +120,30 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
   );
 
   const bbMap = new Map(result.bollingerBands.map(b => [b.date, b]));
+
+  // Use last 90 historical points + all projected points
   const hist = result.predictions.filter(p => !p.isProjected).slice(-90);
   const proj = result.predictions.filter(p => p.isProjected);
-  const projWithJoin = [hist[hist.length - 1], ...proj];
-  const allChart = [...hist, ...proj].map(p => {
+
+  // Build ONE unified dataset. Each row has:
+  //   trendLine      — regression value for historical days (undefined for projected)
+  //   projectedLine  — regression value for projected days (also set on last hist point to join the lines)
+  //   bollinger keys — from bbMap
+  const allChart = [...hist, ...proj].map((p, idx, arr) => {
     const bb = bbMap.get(p.date);
+    const isLast = idx === hist.length - 1;
     return {
-      ...p,
+      date: p.date,
       label: fd(p.date),
-      trendLine: p.price,
-      bollUpper: bb?.upper,
+      isProjected: p.isProjected,
+      trendLine:     (!p.isProjected || isLast) ? p.price : undefined,
+      projectedLine: (p.isProjected || isLast)  ? p.price : undefined,
+      bollUpper:  bb?.upper,
       bollMiddle: bb?.middle,
-      bollLower: bb?.lower,
+      bollLower:  bb?.lower,
     };
   });
-  const histChart = allChart.filter(d => !d.isProjected);
-  const projChart = projWithJoin.map(p => {
-    const bb = bbMap.get(p.date);
-    return {
-      ...p,
-      label: fd(p.date),
-      trendLine: p.price,
-      bollUpper: bb?.upper,
-      bollMiddle: bb?.middle,
-      bollLower: bb?.lower,
-    };
-  });
+
   const color = trendColor(result.trendLabel);
   const todayDate = hist[hist.length - 1]?.date;
 
@@ -190,6 +188,7 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
 
       <div className="rounded-xl border border-white/10 bg-black/20 p-4">
         <ResponsiveContainer width="100%" height={320}>
+          {/* Single unified dataset — all series share the same x-axis positions */}
           <ComposedChart data={allChart} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
             <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }} interval={Math.floor(allChart.length / 8)} tickLine={false} axisLine={false} />
@@ -197,12 +196,14 @@ export default function StockPrediction({ symbol, projectionDays = 30 }: { symbo
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11, color: "#94a3b8", paddingTop: 8 }} />
             {showBollinger && <>
-              <Area data={allChart} dataKey="bollUpper" name="BB Upper" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 2" fill="none" dot={false} legendType="none" />
-              <Area data={allChart} dataKey="bollLower" name="BB Lower" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 2" fill="#3b82f6" fillOpacity={0.06} dot={false} legendType="none" />
-              <Line data={allChart} dataKey="bollMiddle" name="SMA 20" stroke="#3b82f6" strokeWidth={1} dot={false} strokeOpacity={0.5} />
+              <Area dataKey="bollUpper" name="BB Upper" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 2" fill="none" dot={false} legendType="none" connectNulls />
+              <Area dataKey="bollLower" name="BB Lower" stroke="#3b82f6" strokeWidth={1} strokeDasharray="4 2" fill="#3b82f6" fillOpacity={0.06} dot={false} legendType="none" connectNulls />
+              <Line dataKey="bollMiddle" name="SMA 20" stroke="#3b82f6" strokeWidth={1} dot={false} strokeOpacity={0.5} connectNulls />
             </>}
-            <Line data={histChart} dataKey="trendLine" name="Trend (historical)" stroke={color} strokeWidth={2} dot={false} />
-            <Line data={projChart} dataKey="trendLine" name={`Projected (${projectionDays}d)`} stroke={color} strokeWidth={2} strokeDasharray="6 3" dot={false} strokeOpacity={0.7} />
+            {/* trendLine is set only for historical points → solid line covering left portion */}
+            <Line dataKey="trendLine" name="Trend (historical)" stroke={color} strokeWidth={2} dot={false} connectNulls={false} />
+            {/* projectedLine is set only for projected points (+ last hist point to join) → dashed line on right */}
+            <Line dataKey="projectedLine" name={`Projected (${projectionDays}d)`} stroke={color} strokeWidth={2} strokeDasharray="6 3" dot={false} strokeOpacity={0.8} connectNulls={false} />
             {todayDate && <ReferenceLine x={fd(todayDate)} stroke="rgba(255,255,255,0.3)" strokeDasharray="3 3" label={{ value: "Today", position: "top", fontSize: 10, fill: "#94a3b8" }} />}
             <ReferenceLine y={result.supportLevel} stroke="#22c55e" strokeDasharray="4 4" strokeOpacity={0.4} label={{ value: "Support", position: "right", fontSize: 9, fill: "#22c55e" }} />
             <ReferenceLine y={result.resistanceLevel} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.4} label={{ value: "Resist", position: "right", fontSize: 9, fill: "#ef4444" }} />
